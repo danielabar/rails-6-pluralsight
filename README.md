@@ -8,6 +8,10 @@
       - [Bundler](#bundler)
     - [Adding Features with Scaffolds](#adding-features-with-scaffolds)
     - [Creating a Basic Static Page](#creating-a-basic-static-page)
+      - [About Page](#about-page)
+      - [Link to About Page from Index](#link-to-about-page-from-index)
+  - [Populating Pages in Rails](#populating-pages-in-rails)
+    - [Creating New Paths with Routes](#creating-new-paths-with-routes)
 
 <!-- END doctoc generated TOC please keep comment here to allow auto update -->
 
@@ -530,6 +534,7 @@ Fix this: Change `show` method to render the example view just created. Also nee
 # wiki/app/controllers/wiki_posts_controller.rb
 before_action :set_wiki_post, only: %i[ edit update destroy ]
 
+# GET /wiki_posts/1 or /wiki_posts/1.json
 def show
   # will render wiki/app/views/wiki_posts/example.html.erb
   render "example"
@@ -540,4 +545,91 @@ Now it renders the example view:
 
 ![wiki posts example view](doc-images/wiki-posts-example-view.png "wiki posts example view")
 
-Left at 2:07 of Creating a Basic Static Page
+Change endpoint from `http://localhost:3000/wiki_posts/example` to `http://localhost:3000/wiki_posts/1` -> still renders same page. Because we overrode `show` method in controller to always render the same static page.
+
+#### About Page
+
+Adding another static page `welcome/about`.
+
+Start by adding `about` method in the Welcome controller. Note that no method implementation needed, just the method name:
+
+```ruby
+# wiki/app/controllers/welcome_controller.rb
+class WelcomeController < ApplicationController
+  def index
+  end
+
+  def about
+  end
+end
+```
+
+Then create view which Rails will map controller action to by default:
+
+```htm
+<!-- wiki/app/views/welcome/about.html.erb -->
+<h1>Wiki Information</h1>
+```
+
+Add a route for the about view:
+
+```ruby
+# wiki/config/routes.rb
+Rails.application.routes.draw do
+  resources :wiki_posts
+  get 'welcome/index'
+  get 'welcome/about'
+  root 'welcome#index'
+end
+```
+
+Navigate in browser to `http://localhost:3000/welcome/about`:
+
+![about page](doc-images/about-page.png "about page")
+
+Now we want about page to be available at `/about` rather than `/welcome/about`. Use *redirect* for this with `to` in router:
+
+```ruby
+# wiki/config/routes.rb
+Rails.application.routes.draw do
+  resources :wiki_posts
+  get 'welcome/index'
+  get 'welcome/about'
+  get '/about', to: redirect('/welcome/about')
+  root 'welcome#index'
+end
+```
+
+Now can navigate to `http://localhost:3000/about` and browser redirects to `http://localhost:3000/welcome/about` to display the about page.
+
+#### Link to About Page from Index
+
+Edit welcome index view to link to about page. No need to explicitly type out an anchor tag. Use some Ruby code that will generate it with the `link_to` method. Specify link text and path for this method
+
+```erb
+<!-- wiki/app/views/welcome/index.html.erb -->
+<h1>Wiki</h1>
+<p>Posts will go here</p>
+
+<%= link_to "About", "/about" %>
+```
+
+Navigate to root to see this `http://localhost:3000`:
+
+![root with about link](doc-images/root-with-about-link.png "root with about link")
+
+BUT notice the use of a hard-coded path passed to link_to method "/about". Any future change to paths would break this link. Better to use a variable `welcome_about_path`.
+
+We haven't defined this variable - Rails "magic". Works because there's a "welcome" controller with an "about" action, so Rails exposes a variable `welcome_about_path` to link to this.
+
+```erb
+<!-- wiki/app/views/welcome/index.html.erb -->
+<h1>Wiki</h1>
+<p>Posts will go here</p>
+
+<%= link_to "About", welcome_about_path %>
+```
+
+## Populating Pages in Rails
+
+### Creating New Paths with Routes

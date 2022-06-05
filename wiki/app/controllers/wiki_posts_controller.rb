@@ -6,6 +6,7 @@ class WikiPostsController < ApplicationController
     @wiki_posts = WikiPost.all
   end
 
+  # GET /wiki_posts/1 or /wiki_posts/1.json
   def show
     render "example"
   end
