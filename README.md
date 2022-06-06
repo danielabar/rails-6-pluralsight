@@ -12,6 +12,7 @@
       - [Link to About Page from Index](#link-to-about-page-from-index)
   - [Populating Pages in Rails](#populating-pages-in-rails)
     - [Creating New Paths with Routes](#creating-new-paths-with-routes)
+      - [Wiki Posts Model](#wiki-posts-model)
 
 <!-- END doctoc generated TOC please keep comment here to allow auto update -->
 
@@ -633,3 +634,147 @@ We haven't defined this variable - Rails "magic". Works because there's a "welco
 ## Populating Pages in Rails
 
 ### Creating New Paths with Routes
+
+Back to `wiki/app/controllers/wiki_posts_controller.rb`. Earlier we edited `show` method to render the static example page:
+
+```ruby
+# wiki/app/controllers/wiki_posts_controller.rb
+
+def show
+  render "example"
+end
+```
+
+But that's not what a typical Rails app expects. `show` action should be used to show an instance of a model. Remove example code from `show` action and move to new action `example`:
+
+```ruby
+# wiki/app/controllers/wiki_posts_controller.rb
+def show
+end
+
+def example
+  render "example"
+end
+```
+
+Now navigating to `http://localhost:3000/wiki_posts/example` get `ActionController::UrlGenerationError in WikiPosts#show`:
+
+![url generation error](doc-images/urll-generation-error.png "url generation error")
+
+The problem is `/wiki_posts/example` is trying to load the `/show/:id` view because that's one of the routes exposed by `resources :wiki_posts` in the router file `wiki/config/routes.rb`.
+
+To resolve this, need to define a route to the `example` action and point it to our controller. Add this line to router:
+
+```ruby
+# wiki/config/routes.rb
+Rails.application.routes.draw do
+  # expose example method in wiki_posts_controller as a route
+  get 'wiki_posts/example'
+
+  resources :wiki_posts
+  get 'welcome/index'
+  get 'welcome/about'
+  get '/about', to: redirect('/welcome/about')
+  root 'welcome#index'
+end
+```
+
+With this fix, navigate to `http://localhost:3000/wiki_posts/example` and now example page renders.
+
+How did Rails know what to do given this line in router file: `get 'wiki_posts/example'`?
+
+It infers the `wiki_posts_controller` from `wiki_posts` in the router line. And it didn't attempt to load `/show/:id` route because it saw the specific line `get wiki_posts/example` in router *before* the `resources :wiki_posts` line.
+
+In the case of potential multiple matching routes, Rails always maps to first route matched.
+
+Another convention, the explicit render of example can be removed from the action, and Rails will still render the example view - it matches the view name to the controller action name:
+
+```ruby
+# wiki/app/controllers/wiki_posts_controller.rb
+def example
+end
+```
+
+#### Wiki Posts Model
+
+Model is bare-bones at the moment with only timestamps columns. Use generator to add a migration to define further attributes for the model.
+
+`g` is short for `generate`, which does something similar to `scaffold` but narrower scope. Naming convention for migrations is "add column to model". List of field names:datatype is last argument:
+
+```
+bin/rails g migration add_title_to_wiki_posts title:string
+```
+
+Output:
+
+```
+invoke  active_record
+create    db/migrate/20220606103844_add_title_to_wiki_posts.rb
+```
+
+Rails writes the code to add the "title" column to the wiki_posts table in the migration:
+
+```ruby
+# wiki/db/migrate/20220606103844_add_title_to_wiki_posts.rb
+class AddTitleToWikiPosts < ActiveRecord::Migration[6.1]
+  def change
+    add_column :wiki_posts, :title, :string
+  end
+end
+```
+
+Run the migration:
+
+```
+bin/rails db:migrate
+```
+
+Output:
+
+```
+== 20220606103844 AddTitleToWikiPosts: migrating ==============================
+-- add_column(:wiki_posts, :title, :string)
+   -> 0.0049s
+== 20220606103844 AddTitleToWikiPosts: migrated (0.0050s) =====================
+```
+
+Use Rails console to make an instance of this model:
+
+```
+bin/rails c
+```
+
+```ruby
+irb(main):001:0> WikiPost.new :title => "First Post"
+   (1.1ms)  SELECT sqlite_version(*)
+=> #<WikiPost id: nil, created_at: nil, updated_at: nil, title: "First Post">
+```
+
+Try to load this post in the browser view: `http://localhost/wiki_posts/1`. But get same error as before: `ActionController::UrlGenerationError in WikiPosts#show`.
+
+Problem is `WikiPost.new...` created an instance of the model, but doesn't save to database.
+
+Rails Active Record ORM (Object Relational Mapping) supports defining instances of classes (models in this case) in Ruby code, which represent data structure in db. This avoids having to explicitly connect to db in code and write sql queries.
+
+But need to remember to *save* model instance to db, back in Rails console, use `create` method instead of `new` on WikiPost model class:
+
+```ruby
+irb(main):001:0> WikiPost.create(:title => "First Post")
+TRANSACTION (1.0ms)  begin transaction
+  WikiPost Create (2.8ms)  INSERT INTO "wiki_posts" ("created_at", "updated_at", "title") VALUES (?, ?, ?)  [["created_at", "2022-06-06 10:59:18.294132"], ["updated_at", "2022-06-06 10:59:18.294132"], ["title", "First Post"]]
+  TRANSACTION (1.2ms)  commit transaction
+=> #<WikiPost id: 1, created_at: "2022-06-06 10:59:18.294132000 +0000", updated_at: "2022-06-06 10:59:18.294132000 +0000", title: "First Post">
+```
+
+Also modify controller to put back temp change we made earlier to not have `show` method included in list of actions that would load a model instance by given `:id` in the route:
+
+```ruby
+# wiki/app/controllers/wiki_posts_controller.rb
+before_action :set_wiki_post, only: %i[ edit update destroy show ]
+```
+
+Now rendering page `http://localhost:3000/wiki_posts/1` works:
+
+![wiki posts 1 renders](doc-images/wiki-posts-1-renders.png "wiki posts 1 renders")
+
+Left at 8:03 of Creating New Paths with Routes
