@@ -15,6 +15,7 @@
       - [Wiki Posts Model](#wiki-posts-model)
       - [Rails Controller Actions](#rails-controller-actions)
     - [Customizing Basic CSS](#customizing-basic-css)
+    - [Implementing JavaScript](#implementing-javascript)
 
 <!-- END doctoc generated TOC please keep comment here to allow auto update -->
 
@@ -919,4 +920,54 @@ Refresh `http://localhost:3000/wiki_posts/example`:
 
 ![example with links](doc-images/example-with-links.png "example with links")
 
-Left at 4:12 of Customizing Basic CSS
+Clicking Home links to `http://localhost:3000/welcome/index` and New Wiki Post links to `http://localhost:3000/wiki_posts/new`
+
+Index page `http://localhost:3000/` currently looks like this:
+
+![bare bones index page](doc-images/bare-bones-index-page.png "bare bones index page")
+
+Now that there's a posts model with at least one instance created, can replace "Posts will go here" placeholder text with real content.
+
+In order for the posts to be available to the index view (welcome/index), the controller index action must assign an instance variable `@posts` to contain the results of all the wiki posts.
+
+```ruby
+# wiki/app/controllers/welcome_controller.rb
+class WelcomeController < ApplicationController
+  def index
+    @posts = WikiPost.all
+  end
+
+  def about
+  end
+end
+```
+
+`@` makes `@posts` an instance variable which means it can be accessed across the current instance of this class `WelcomeController` no matter what the scope is. The welcome/index view is within the same instance of the `WelcomeController` class, which means `@` instance variables can be shared between controller and view.
+
+Update view to loop through each post in the `@posts` collection and display it using embedded Ruby tag `<% ... %>` and display each posts title.
+
+Also use `link_to` to generate a link to that posts details view, note that since this route requires the post `id` parameter, need to pass the model instance in as a parameter to that `wiki_post_path` variable/method.
+
+Note that `<%= ... %>` is for a single line of Ruby, whereas `<% ...%>` is for a multi-line block:
+
+```erb
+<!-- wiki/app/views/welcome/index.html.erb -->
+<h1>Wiki</h1>
+
+<% @posts.each do |post| %>
+  <p>
+    <h4><%= post.title %></h4>
+    <%= link_to "View", wiki_post_path(post) %>
+  </p>
+<% end %>
+
+<%= link_to "About", welcome_about_path %>
+```
+
+Refresh `http://localhost:3000/` to see listing of wiki posts (we just have one instance for now) and View link:
+
+![index with post list](doc-images/index-with-post-list.png "index with post list")
+
+Clicking View link navigates to "show" view for that post id: `http://localhost:3000/wiki_posts/1`
+
+### Implementing JavaScript
