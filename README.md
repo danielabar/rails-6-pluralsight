@@ -16,6 +16,9 @@
       - [Rails Controller Actions](#rails-controller-actions)
     - [Customizing Basic CSS](#customizing-basic-css)
     - [Implementing JavaScript](#implementing-javascript)
+    - [Summary](#summary)
+  - [Building Dynamic Web Apps with MVC's](#building-dynamic-web-apps-with-mvcs)
+    - [Working with ActiveStorage](#working-with-activestorage)
 
 <!-- END doctoc generated TOC please keep comment here to allow auto update -->
 
@@ -971,3 +974,151 @@ Refresh `http://localhost:3000/` to see listing of wiki posts (we just have one 
 Clicking View link navigates to "show" view for that post id: `http://localhost:3000/wiki_posts/1`
 
 ### Implementing JavaScript
+
+Uses Webpack. Rails comes with webpacker, which handles all the Webpack configuration. Makes it easy to add JS to the app. Just import any modules to be loaded into index.js.
+
+Example: Add a confirmation before loading a wiki post, when user clicks View link from home page, will receive browser prompt asking if they really want to view this post.
+
+Start by adding a css class to the view link using the `class` parameter in `link_to` method. The JS will use this to select this link later:
+
+```erb
+<!-- wiki/app/views/welcome/index.html.erb -->
+<h1>Wiki</h1>
+
+<% @posts.each do |post| %>
+  <p>
+    <h4><%= post.title %></h4>
+    <%= link_to "View", wiki_post_path(post), class: 'wikiLink' %>
+  </p>
+<% end %>
+
+<%= link_to "About", welcome_about_path %>
+```
+
+Verify in dev tools, the view link gets rendered as:
+
+```htm
+<a class="wikiLink" href="/wiki_posts/1">View</a>
+```
+
+Javascript imports get added to `application.js`, the main javascript entry point for app. Everything in this file gets compiled by webpacker into the main application.
+
+```javascript
+// wiki/app/javascript/packs/application.js
+// This file is automatically compiled by Webpack, along with any other files
+// present in this directory. You're encouraged to place your actual application logic in
+// a relevant structure within app/javascript and only use these pack files to reference
+// that code so it'll be compiled.
+
+import Rails from "@rails/ujs"
+import Turbolinks from "turbolinks"
+import * as ActiveStorage from "@rails/activestorage"
+import "channels"
+
+// Add our view specific module here
+import "../welcome"
+
+Rails.start()
+Turbolinks.start()
+ActiveStorage.start()
+```
+
+Here is `welcome.js`:
+
+```javascript
+// wiki/app/javascript/welcome.js
+const ready = () => {
+  const links = document.getElementsByClassName('wikiLink')
+  for (link of links) {
+    console.log(link)
+  }
+}
+
+document.addEventListener("DOMContentLoaded", ready);
+```
+
+JavaScript gets loaded *before* the DOM does, that's why it needs to listen for `DOMContentLoaded` event before attempting to query for links by css class name.
+
+Refresh `http://localhost:3000/` in browser, watch Rails server console, it will run webpacker compile and then render view again:
+
+```
+[Webpacker] Compiling...
+[Webpacker] Compiled all packs in /Users/dbaron/projects/pluralsight/rails-6-pluralsight/wiki/public/packs
+[Webpacker] Hash: 0861d71bf670fe86582b
+Version: webpack 4.46.0
+Time: 1624ms
+Built at: 06/09/2022 6:35:50 AM
+                                     Asset       Size       Chunks                         Chunk Names
+    js/application-97a8e49ff7b69297899d.js    127 KiB  application  [emitted] [immutable]  application
+js/application-97a8e49ff7b69297899d.js.map    139 KiB  application  [emitted] [dev]        application
+                             manifest.json  364 bytes               [emitted]
+Entrypoint application = js/application-97a8e49ff7b69297899d.js js/application-97a8e49ff7b69297899d.js.map
+[./app/javascript/channels sync recursive _channel\.js$] ./app/javascript/channels sync _channel\.js$ 160 bytes {application} [built]
+[./app/javascript/channels/index.js] 211 bytes {application} [built]
+[./app/javascript/packs/application.js] 513 bytes {application} [built]
+[./app/javascript/welcome.js] 1.98 KiB {application} [built]
+[./node_modules/webpack/buildin/module.js] (webpack)/buildin/module.js 552 bytes {application} [built]
+    + 3 hidden modules
+
+  Rendered layout layouts/application.html.erb (Duration: 5898.5ms | Allocations: 6497)
+Completed 200 OK in 5914ms (Views: 5901.2ms | ActiveRecord: 8.3ms | Allocations: 6896)
+```
+
+Then looking at Console in browser, can see the View link logged there.
+
+Update `welcome.js` to add a click event listener to link, that for now, simply logs to console:
+
+```javascript
+// wiki/app/javascript/welcome.js
+const ready = () => {
+  const links = document.getElementsByClassName('wikiLink')
+  for (link of links) {
+    console.log(link)
+  }
+}
+
+document.addEventListener("DOMContentLoaded", ready);
+```
+
+Again refresh `http://localhost:3000/`, wait for Webpack compile to finish in Rails console, then click on View link from homepage. This time it logs the PointerEvent to console, and then navigates to View wiki post page `http://localhost:3000/wiki_posts/1`:
+
+![pointer event](doc-images/pointer-event.png "pointer event")
+
+To implement a confirmation popup in js, interrupt the link click event with an anonymous function on the link click listener.
+
+`e.preventDefault()` prevents the navigation from happening, which is the default browser behaviour from clicking the link.
+
+Then display confirmation popup. If user clicks Cancel from this popup, return from function and no navigation takes place in the browser.
+
+If user clicks Confirm from popup, then JS gets url from the link element, and use JS navigation to take user to the View page:
+
+```javascript
+// wiki/app/javascript/welcome.js
+const ready = () => {
+  const links = document.getElementsByClassName('wikiLink')
+  for (link of links) {
+    link.addEventListener("click", e => {
+      e.preventDefault();
+      if(!confirm("Are you sure you want to view this article?")) {
+        return
+      }
+      window.location.href = link.href
+    })
+  }
+}
+
+document.addEventListener("DOMContentLoaded", ready);
+```
+
+![js are you sure](doc-images/js-are-you-sure.png "js are you sure")
+
+### Summary
+
+* Rails generates routes automatically, naming convention: `controller name_action name_path name`
+* CRUD: Create, Read, Update, Destroy
+* Rails supports SCSS styling by default
+* JS lives in the `app/javascript` folder and is compiled automatically by Webpacker/webpack.
+
+## Building Dynamic Web Apps with MVC's
+
+### Working with ActiveStorage

@@ -3,7 +3,7 @@
 <% @posts.each do |post| %>
   <p>
     <h4><%= post.title %></h4>
-    <%= link_to "View", wiki_post_path(post) %>
+    <%= link_to "View", wiki_post_path(post), class: 'wikiLink' %>
   </p>
 <% end %>
 
