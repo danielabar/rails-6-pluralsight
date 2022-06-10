@@ -19,6 +19,9 @@
     - [Summary](#summary)
   - [Building Dynamic Web Apps with MVC's](#building-dynamic-web-apps-with-mvcs)
     - [Working with ActiveStorage](#working-with-activestorage)
+      - [Create and Edit Posts](#create-and-edit-posts)
+      - [Using form_with](#using-form_with)
+      - [Add Image Upload](#add-image-upload)
 
 <!-- END doctoc generated TOC please keep comment here to allow auto update -->
 
@@ -1121,4 +1124,387 @@ document.addEventListener("DOMContentLoaded", ready);
 
 ## Building Dynamic Web Apps with MVC's
 
+For this section, updated styles copied from [module-4](https://github.com/XFactor-Consultants/Ruby-Getting-Started/tree/module-4/app/assets/stylesheets) branch of instructor's repo.
+
 ### Working with ActiveStorage
+
+Currently posts only have:
+* updated_at
+* created_at
+* id
+* title
+
+To add a real post, need:
+* author
+* image
+* description
+
+Adding author and description, simple text fields is straightforward. But how to deal with files for the post image?
+
+Relational databases are capable of storing blob's (binary content) but its inefficient. DB not designed to store terabytes of image file data. Database could exceed theoretical file size limit of NTFS.
+
+Solution: Store files as files, no need to encode/decode them to/from a database.
+
+ActiveStorage is a tool that ships with Rails and designed for storing files associated with models. Comes with a lot of config options for how to store files.
+
+By default, for local/dev, stores in a local file in project named `storage`.
+
+Run this command to enable it:
+
+```bash
+bin/rails active_storage:install
+# Copied migration 20220610113424_create_active_storage_tables.active_storage.rb from active_storage
+```
+
+Creates a migration for the database. These new tables will associate a file in some storage to the database. A database record could have one or many files attached to it. Files can be attached to any number of records. aka many-to-many relationship between files and records.
+
+```ruby
+# wiki/db/migrate/20220610113424_create_active_storage_tables.active_storage.rb
+# This migration comes from active_storage (originally 20170806125915)
+class CreateActiveStorageTables < ActiveRecord::Migration[5.2]
+  def change
+    create_table :active_storage_blobs do |t|
+      t.string   :key,          null: false
+      t.string   :filename,     null: false
+      t.string   :content_type
+      t.text     :metadata
+      t.string   :service_name, null: false
+      t.bigint   :byte_size,    null: false
+      t.string   :checksum,     null: false
+      t.datetime :created_at,   null: false
+
+      t.index [ :key ], unique: true
+    end
+
+    create_table :active_storage_attachments do |t|
+      t.string     :name,     null: false
+      t.references :record,   null: false, polymorphic: true, index: false
+      t.references :blob,     null: false
+
+      t.datetime :created_at, null: false
+
+      t.index [ :record_type, :record_id, :name, :blob_id ], name: "index_active_storage_attachments_uniqueness", unique: true
+      t.foreign_key :active_storage_blobs, column: :blob_id
+    end
+
+    create_table :active_storage_variant_records do |t|
+      t.belongs_to :blob, null: false, index: false
+      t.string :variation_digest, null: false
+
+      t.index %i[ blob_id variation_digest ], name: "index_active_storage_variant_records_uniqueness", unique: true
+      t.foreign_key :active_storage_blobs, column: :blob_id
+    end
+  end
+end
+```
+
+Now run the migration:
+
+```
+bin/rails db:migrate
+```
+
+Output:
+
+```
+== 20220610113424 CreateActiveStorageTables: migrating ========================
+-- create_table(:active_storage_blobs, {})
+   -> 0.0039s
+-- create_table(:active_storage_attachments, {})
+   -> 0.0032s
+-- create_table(:active_storage_variant_records, {})
+   -> 0.0021s
+== 20220610113424 CreateActiveStorageTables: migrated (0.0094s) ===============
+```
+
+To attach a file to a model, use the `has_one_attached` method. This tells ActiveStorage that it can attach/save files (image in this case) to the model:
+
+```ruby
+# wiki/app/models/wiki_post.rb
+class WikiPost < ApplicationRecord
+  has_one_attached :image
+end
+```
+
+Add remainder of needed columns to the WikiPost model. Use the migration generator:
+
+```bash
+bin/rails g migration add_author_description_to_wiki_post
+```
+
+Output:
+
+```
+invoke  active_record
+create    db/migrate/20220610114400_add_author_description_to_wiki_post.rb
+```
+
+This generated a migration file but we have to fill in the details in the `change` method:
+
+```ruby
+# wiki/db/migrate/20220610114400_add_author_description_to_wiki_post.rb
+class AddAuthorDescriptionToWikiPost < ActiveRecord::Migration[6.1]
+  def change
+    # add our columns here:
+    add_column :wiki_posts, :description, :string
+    add_column :wiki_posts, :author, :string
+  end
+end
+```
+
+Run this migration:
+
+```
+bin/rails db:migrate
+```
+
+Output:
+
+```
+== 20220610114400 AddAuthorDescriptionToWikiPost: migrating ===================
+== 20220610114400 AddAuthorDescriptionToWikiPost: migrated (0.0000s) ==========
+```
+
+#### Create and Edit Posts
+
+Need to implement create and edit posts feature for users of the wiki site.
+
+Add link to homepage so that user can create a new post, it can be similar to the about link, but use variable `new_wiki_post_path` (can find this from `bin/rails routes`):
+
+```erb
+<!-- wiki/app/views/welcome/index.html.erb -->
+<h1>Wiki</h1>
+
+<% @posts.each do |post| %>
+  <p>
+    <h4><%= post.title %></h4>
+    <%= link_to "View", wiki_post_path(post), class: 'wikiLink' %>
+  </p>
+<% end %>
+
+<%= link_to "About", welcome_about_path %>
+<%= link_to "New post", new_wiki_post_path %>
+```
+
+Now homepage contains New post link:
+
+![homepage new link](doc-images/homepage-new-link.png "homepage new link")
+
+Clicking on new post link navigates to `http://localhost:3000/wiki_posts/new`:
+
+![new post page](doc-images/new-post-page.png "new post page")
+
+The new post page should have a form for user to provide info to create a new post, but currently its empty. Why? Earlier when used the `scaffold` command to generate the WikiPost model `bin/rails generate scaffold WikiPost`, didn't specify any fields, so Rails generated an empty form in the new view using `render` method with the argument `'form'`, which is a partial:
+
+```erb
+<!-- wiki/app/views/wiki_posts/new.html.erb -->
+<h1>New Wiki Post</h1>
+
+<%= render 'form', wiki_post: @wiki_post %>
+
+<%= link_to 'Back', wiki_posts_path %>
+```
+
+```erb
+<!-- wiki/app/views/wiki_posts/_form.html.erb -->
+<%= form_with(model: wiki_post) do |form| %>
+  <% if wiki_post.errors.any? %>
+    <div id="error_explanation">
+      <h2><%= pluralize(wiki_post.errors.count, "error") %> prohibited this wiki_post from being saved:</h2>
+
+      <ul>
+        <% wiki_post.errors.each do |error| %>
+          <li><%= error.full_message %></li>
+        <% end %>
+      </ul>
+    </div>
+  <% end %>
+
+  <div class="actions">
+    <%= form.submit %>
+  </div>
+<% end %>
+```
+
+Here is the markup Rails generates for the form:
+
+![empty form markup](doc-images/empty-form-markup.png "empty form markup")
+
+#### Using form_with
+
+The built-in Rails helper `form_with` renders an html form. The basic usage is as follows:
+
+```erb
+<%= form_with do |form| %>
+  Form contents
+<%= end %>
+```
+
+Update `_form.html.erb` to display form label and inputs for the WikiPost title, description, and author name:
+
+```erb
+<!-- wiki/app/views/wiki_posts/_form.html.erb -->
+<%= form_with(model: wiki_post) do |form| %>
+  <%= form.label :title, "Post title" %>
+  <%= form.text_field :title %>
+
+  <%= form.label :description, "Post description" %>
+  <%= form.text_field :description %>
+
+  <%= form.label :author, "What is your name?" %>
+  <%= form.text_field :author %>
+
+  <div class="actions">
+    <%= form.submit %>
+  </div>
+<% end %>
+```
+
+Renders like this:
+
+![new wiki post form](doc-images/new-wiki-post-form.png "new wiki post form")
+
+And here's the markup that the `form_with` helper generated this time:
+
+![new wiki post form markup](doc-images/new-wiki-post-form-markup.png "new wiki post form markup")
+
+#### Add Image Upload
+
+No need to write any JavaScript file uploader. We just need an input type = file. Add a field similar to title, but instead of `text_field`, use `file_field`:
+
+```erb
+<!-- wiki/app/views/wiki_posts/_form.html.erb -->
+<%= form_with(model: wiki_post) do |form| %>
+  <%= form.label :title, "Post title" %>
+  <%= form.text_field :title %>
+
+  <%= form.label :image, "Post image" %>
+  <%= form.file_field :image %>
+
+  <%= form.label :description, "Post description" %>
+  <%= form.text_field :description %>
+
+  <%= form.label :author, "What is your name?" %>
+  <%= form.text_field :author %>
+
+  <div class="actions">
+    <%= form.submit %>
+  </div>
+<% end %>
+```
+
+Now the form displays with a Choose File button:
+
+![new wiki post form with file](doc-images/new-wiki-post-form-with-file.png "new wiki post form with file")
+
+Here's the markup generated by `form.file_field`:
+
+![file markup](doc-images/file-markup.png "file markup")
+
+Try out the form selecting `images/header-ruby-logo.png` for the post image:
+
+![fill out form](doc-images/fill-out-form.png "fill out form")
+
+Click submit button, get `ActiveModel::ForbiddenAttributesError` error:
+
+![attributes forbidden](doc-images/attributes-forbidden.png "attributes forbidden")
+
+This is coming from the WikiPosts controller `create` method. It receives all the parameters from the form, but we need to explicitly tell Rails what fields are allowed to be used in creating a WikiPost model. For security reasons, wouldn't want a user to attempt to set an id or role field.
+
+The scaffold command used earlier `bin/rails generate scaffold WikiPost` would have specified this in the controller, but at the time, the WikiPost model didn't have any fields. So now we need to do this.
+
+Here's the current controller code from scaffolding, notice, no fields are allowed in method `wiki_post_params`, only relevant code shown for brevity:
+
+```ruby
+# wiki/app/controllers/wiki_posts_controller.rb
+class WikiPostsController < ApplicationController
+  # GET /wiki_posts/new
+  def new
+    @wiki_post = WikiPost.new
+  end
+
+  # POST /wiki_posts or /wiki_posts.json
+  def create
+    @wiki_post = WikiPost.new(wiki_post_params)
+
+    respond_to do |format|
+      if @wiki_post.save
+        format.html { redirect_to wiki_post_url(@wiki_post), notice: "Wiki post was successfully created." }
+        format.json { render :show, status: :created, location: @wiki_post }
+      else
+        format.html { render :new, status: :unprocessable_entity }
+        format.json { render json: @wiki_post.errors, status: :unprocessable_entity }
+      end
+    end
+  end
+
+  private
+    # Only allow a list of trusted parameters through.
+    def wiki_post_params
+      params.fetch(:wiki_post, {})
+    end
+end
+```
+
+Update `wiki_post_params` method to allow the fields needed to create a WikiPost that a user can specify:
+
+```ruby
+def wiki_post_params
+  params.fetch(:wiki_post, {}).permit(:title, :description, :image, :author)
+end
+```
+
+Now fill out the form in UI and try to create again - this time it works, and lands on the show post page `http://localhost:3000/wiki_posts/3` (because this is where the `create` method redirects to up on successful saving of newly created model):
+
+![created post](doc-images/created-post.png "created post")
+
+Output from Rails console shows queries that were run to create the new model and associated active storage for image:
+
+```
+Started POST "/wiki_posts" for ::1 at 2022-06-10 08:48:16 -0400
+Processing by WikiPostsController#create as HTML
+  Parameters: {"authenticity_token"=>"[FILTERED]", "wiki_post"=>{"title"=>"Rails", "image"=>#<ActionDispatch::Http::UploadedFile:0x00007ff38b580008 @tempfile=#<Tempfile:/var/folders/kj/49pyh5kd50g8cyxsby3yqhqc0000gn/T/RackMultipart20220610-13302-1u5wmxv.png>, @original_filename="header-ruby-logo.png", @content_type="image/png", @headers="Content-Disposition: form-data; name=\"wiki_post[image]\"; filename=\"header-ruby-logo.png\"\r\nContent-Type: image/png\r\n">, "description"=>"Rails is awesome", "author"=>"Daniela"}, "commit"=>"Create Wiki post"}
+  TRANSACTION (0.1ms)  begin transaction
+  ↳ app/controllers/wiki_posts_controller.rb:30:in `block in create'
+  WikiPost Create (1.0ms)  INSERT INTO "wiki_posts" ("created_at", "updated_at", "title", "description", "author") VALUES (?, ?, ?, ?, ?)  [["created_at", "2022-06-10 12:48:16.340165"], ["updated_at", "2022-06-10 12:48:16.340165"], ["title", "Rails"], ["description", "Rails is awesome"], ["author", "Daniela"]]
+  ↳ app/controllers/wiki_posts_controller.rb:30:in `block in create'
+  ActiveStorage::Blob Load (0.9ms)  SELECT "active_storage_blobs".* FROM "active_storage_blobs" INNER JOIN "active_storage_attachments" ON "active_storage_blobs"."id" = "active_storage_attachments"."blob_id" WHERE "active_storage_attachments"."record_id" = ? AND "active_storage_attachments"."record_type" = ? AND "active_storage_attachments"."name" = ? LIMIT ?  [["record_id", 3], ["record_type", "WikiPost"], ["name", "image"], ["LIMIT", 1]]
+  ↳ app/controllers/wiki_posts_controller.rb:30:in `block in create'
+  ActiveStorage::Attachment Load (0.2ms)  SELECT "active_storage_attachments".* FROM "active_storage_attachments" WHERE "active_storage_attachments"."record_id" = ? AND "active_storage_attachments"."record_type" = ? AND "active_storage_attachments"."name" = ? LIMIT ?  [["record_id", 3], ["record_type", "WikiPost"], ["name", "image"], ["LIMIT", 1]]
+  ↳ app/controllers/wiki_posts_controller.rb:30:in `block in create'
+  ActiveStorage::Blob Create (0.5ms)  INSERT INTO "active_storage_blobs" ("key", "filename", "content_type", "metadata", "service_name", "byte_size", "checksum", "created_at") VALUES (?, ?, ?, ?, ?, ?, ?, ?)  [["key", "2zcagi3aaqffztmnulu6x6ur2hqu"], ["filename", "header-ruby-logo.png"], ["content_type", "image/png"], ["metadata", "{\"identified\":true}"], ["service_name", "local"], ["byte_size", 5365], ["checksum", "LQtcqjFqw+UGHetMpabgwg=="], ["created_at", "2022-06-10 12:48:16.405466"]]
+  ↳ app/controllers/wiki_posts_controller.rb:30:in `block in create'
+  ActiveStorage::Attachment Create (0.5ms)  INSERT INTO "active_storage_attachments" ("name", "record_type", "record_id", "blob_id", "created_at") VALUES (?, ?, ?, ?, ?)  [["name", "image"], ["record_type", "WikiPost"], ["record_id", 3], ["blob_id", 1], ["created_at", "2022-06-10 12:48:16.409309"]]
+  ↳ app/controllers/wiki_posts_controller.rb:30:in `block in create'
+  WikiPost Update (0.1ms)  UPDATE "wiki_posts" SET "updated_at" = ? WHERE "wiki_posts"."id" = ?  [["updated_at", "2022-06-10 12:48:16.417436"], ["id", 3]]
+  ↳ app/controllers/wiki_posts_controller.rb:30:in `block in create'
+  TRANSACTION (1.0ms)  commit transaction
+  ↳ app/controllers/wiki_posts_controller.rb:30:in `block in create'
+  Disk Storage (1.8ms) Uploaded file to key: 2zcagi3aaqffztmnulu6x6ur2hqu (checksum: LQtcqjFqw+UGHetMpabgwg==)
+[ActiveJob] Enqueued ActiveStorage::AnalyzeJob (Job ID: 95b96ccd-96af-413c-be96-5a7e5b975963) to Async(default) with arguments: #<GlobalID:0x00007ff38b429060 @uri=#<URI::GID gid://wiki/ActiveStorage::Blob/1>>
+Redirected to http://localhost:3000/wiki_posts/3
+Completed 302 Found in 179ms (ActiveRecord: 5.4ms | Allocations: 34585)
+
+
+  ActiveStorage::Blob Load (0.3ms)  SELECT "active_storage_blobs".* FROM "active_storage_blobs" WHERE "active_storage_blobs"."id" = ? LIMIT ?  [["id", 1], ["LIMIT", 1]]
+[ActiveJob] [ActiveStorage::AnalyzeJob] [95b96ccd-96af-413c-be96-5a7e5b975963] Performing ActiveStorage::AnalyzeJob (Job ID: 95b96ccd-96af-413c-be96-5a7e5b975963) from Async(default) enqueued at 2022-06-10T12:48:16Z with arguments: #<GlobalID:0x00007ff38b410010 @uri=#<URI::GID gid://wiki/ActiveStorage::Blob/1>>
+[ActiveJob] [ActiveStorage::AnalyzeJob] [95b96ccd-96af-413c-be96-5a7e5b975963]   Disk Storage (0.4ms) Downloaded file from key: 2zcagi3aaqffztmnulu6x6ur2hqu
+[ActiveJob] [ActiveStorage::AnalyzeJob] [95b96ccd-96af-413c-be96-5a7e5b975963] Skipping image analysis because the mini_magick gem isn't installed
+[ActiveJob] [ActiveStorage::AnalyzeJob] [95b96ccd-96af-413c-be96-5a7e5b975963]   TRANSACTION (0.1ms)  begin transaction
+[ActiveJob] [ActiveStorage::AnalyzeJob] [95b96ccd-96af-413c-be96-5a7e5b975963]   ActiveStorage::Blob Update (0.4ms)  UPDATE "active_storage_blobs" SET "metadata" = ? WHERE "active_storage_blobs"."id" = ?  [["metadata", "{\"identified\":true,\"analyzed\":true}"], ["id", 1]]
+[ActiveJob] [ActiveStorage::AnalyzeJob] [95b96ccd-96af-413c-be96-5a7e5b975963]   TRANSACTION (0.7ms)  commit transaction
+[ActiveJob] [ActiveStorage::AnalyzeJob] [95b96ccd-96af-413c-be96-5a7e5b975963] Performed ActiveStorage::AnalyzeJob (Job ID: 95b96ccd-96af-413c-be96-5a7e5b975963) from Async(default) in 144.17ms
+Started GET "/wiki_posts/3" for ::1 at 2022-06-10 08:48:16 -0400
+Processing by WikiPostsController#show as HTML
+  Parameters: {"id"=>"3"}
+  WikiPost Load (0.2ms)  SELECT "wiki_posts".* FROM "wiki_posts" WHERE "wiki_posts"."id" = ? LIMIT ?  [["id", 3], ["LIMIT", 1]]
+  ↳ app/controllers/wiki_posts_controller.rb:66:in `set_wiki_post'
+  Rendering layout layouts/application.html.erb
+  Rendering wiki_posts/show.html.erb within layouts/application
+  Rendered wiki_posts/show.html.erb within layouts/application (Duration: 7.3ms | Allocations: 264)
+[Webpacker] Everything's up-to-date. Nothing to do
+  Rendered layout layouts/application.html.erb (Duration: 15.8ms | Allocations: 4009)
+Completed 200 OK in 32ms (Views: 28.5ms | ActiveRecord: 0.2ms | Allocations: 5187)
+```
+
+Left at 9:26 of Working with ActiveStorage
