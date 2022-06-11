@@ -1,6 +1,11 @@
 <p id="notice"><%= notice %></p>
 
 <h1><%= @wiki_post.title %></h1>
+<p><%= image_tag @wiki_post.image %></p>
+<p><%= @wiki_post.description %></p>
+<p>By: <%= @wiki_post.author %></p>
+<p>Created: <%= @wiki_post.created_at %></p>
+<p>Updated: <%= @wiki_post.updated_at %></p>
 
 <%= link_to 'Edit', edit_wiki_post_path(@wiki_post) %> |
 <%= link_to 'Back', wiki_posts_path %>

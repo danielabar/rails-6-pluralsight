@@ -22,6 +22,8 @@
       - [Create and Edit Posts](#create-and-edit-posts)
       - [Using form_with](#using-form_with)
       - [Add Image Upload](#add-image-upload)
+    - [Migrating Databases](#migrating-databases)
+    - [Moving Data Between Views and Controllers](#moving-data-between-views-and-controllers)
 
 <!-- END doctoc generated TOC please keep comment here to allow auto update -->
 
@@ -1507,4 +1509,260 @@ Processing by WikiPostsController#show as HTML
 Completed 200 OK in 32ms (Views: 28.5ms | ActiveRecord: 0.2ms | Allocations: 5187)
 ```
 
-Left at 9:26 of Working with ActiveStorage
+Update the show view to display all the wiki fields (will deal with image later):
+
+```erb
+<!-- wiki/app/views/wiki_posts/show.html.erb -->
+<p id="notice"><%= notice %></p>
+
+<h1><%= @wiki_post.title %></h1>
+<p><%= @wiki_post.description %></p>
+<p>By: <%= @wiki_post.author %></p>
+<p>Created: <%= @wiki_post.created_at %></p>
+<p>Updated: <%= @wiki_post.updated_at %></p>
+
+<%= link_to 'Edit', edit_wiki_post_path(@wiki_post) %> |
+<%= link_to 'Back', wiki_posts_path %>
+```
+
+Show the post created earlier with the form at `http://localhost:3000/wiki_posts/3`:
+
+![show text fields](doc-images/show-text-fields.png "show text fields")
+
+Now update view to show the wiki post image - instructor did not explain this!
+
+```erb
+<!-- wiki/app/views/wiki_posts/show.html.erb -->
+<p id="notice"><%= notice %></p>
+
+<h1><%= @wiki_post.title %></h1>
+<p><%= image_tag @wiki_post.image %></p>
+<p><%= @wiki_post.description %></p>
+<p>By: <%= @wiki_post.author %></p>
+<p>Created: <%= @wiki_post.created_at %></p>
+<p>Updated: <%= @wiki_post.updated_at %></p>
+
+<%= link_to 'Edit', edit_wiki_post_path(@wiki_post) %> |
+<%= link_to 'Back', wiki_posts_path %>
+```
+
+This uses a view helper - [image_tag](https://apidock.com/rails/ActionView/Helpers/AssetTagHelper/image_tag).
+
+Refresh `http://localhost:3000/wiki_posts/3`:
+
+![show post with image](doc-images/show-post-with-image.png "show post with image")
+
+Generates markup html img tag:
+
+```htm
+<img src="http://localhost:3000/rails/active_storage/blobs/redirect/eyJfcmFpbHMiOnsibWVzc2FnZSI6IkJBaHBCZz09IiwiZXhwIjpudWxsLCJwdXIiOiJibG9iX2lkIn19--14b57dc3f3c050c4cda945006c25874bb0579462/header-ruby-logo.png">
+```
+
+Also notice in Rails console, all the activity to get image from ActiveStorage when the show view is loaded:
+
+```
+Started GET "/wiki_posts/3" for ::1 at 2022-06-11 07:43:49 -0400
+Processing by WikiPostsController#show as HTML
+  Parameters: {"id"=>"3"}
+   (0.2ms)  SELECT sqlite_version(*)
+  ↳ app/controllers/wiki_posts_controller.rb:66:in `set_wiki_post'
+  WikiPost Load (1.9ms)  SELECT "wiki_posts".* FROM "wiki_posts" WHERE "wiki_posts"."id" = ? LIMIT ?  [["id", 3], ["LIMIT", 1]]
+  ↳ app/controllers/wiki_posts_controller.rb:66:in `set_wiki_post'
+  Rendering layout layouts/application.html.erb
+  Rendering wiki_posts/show.html.erb within layouts/application
+  ActiveStorage::Attachment Load (2.1ms)  SELECT "active_storage_attachments".* FROM "active_storage_attachments" WHERE "active_storage_attachments"."record_id" = ? AND "active_storage_attachments"."record_type" = ? AND "active_storage_attachments"."name" = ? LIMIT ?  [["record_id", 3], ["record_type", "WikiPost"], ["name", "image"], ["LIMIT", 1]]
+  ↳ app/views/wiki_posts/show.html.erb:4
+  ActiveStorage::Blob Load (0.5ms)  SELECT "active_storage_blobs".* FROM "active_storage_blobs" WHERE "active_storage_blobs"."id" = ? LIMIT ?  [["id", 1], ["LIMIT", 1]]
+  ↳ app/views/wiki_posts/show.html.erb:4
+  Rendered wiki_posts/show.html.erb within layouts/application (Duration: 52.2ms | Allocations: 2190)
+[Webpacker] Everything's up-to-date. Nothing to do
+  Rendered layout layouts/application.html.erb (Duration: 118.9ms | Allocations: 5916)
+Completed 200 OK in 149ms (Views: 121.1ms | ActiveRecord: 5.8ms | Allocations: 7454)
+
+
+Started GET "/rails/active_storage/blobs/redirect/eyJfcmFpbHMiOnsibWVzc2FnZSI6IkJBaHBCZz09IiwiZXhwIjpudWxsLCJwdXIiOiJibG9iX2lkIn19--14b57dc3f3c050c4cda945006c25874bb0579462/header-ruby-logo.png" for ::1 at 2022-06-11 07:43:50 -0400
+Processing by ActiveStorage::Blobs::RedirectController#show as PNG
+  Parameters: {"signed_id"=>"eyJfcmFpbHMiOnsibWVzc2FnZSI6IkJBaHBCZz09IiwiZXhwIjpudWxsLCJwdXIiOiJibG9iX2lkIn19--14b57dc3f3c050c4cda945006c25874bb0579462", "filename"=>"header-ruby-logo"}
+  ActiveStorage::Blob Load (0.2ms)  SELECT "active_storage_blobs".* FROM "active_storage_blobs" WHERE "active_storage_blobs"."id" = ? LIMIT ?  [["id", 1], ["LIMIT", 1]]
+  Disk Storage (1.6ms) Generated URL for file at key: 2zcagi3aaqffztmnulu6x6ur2hqu (http://localhost:3000/rails/active_storage/disk/eyJfcmFpbHMiOnsibWVzc2FnZSI6IkJBaDdDVG9JYTJWNVNTSWhNbnBqWVdkcE0yRmhjV1ptZW5SdGJuVnNkVFo0Tm5WeU1taHhkUVk2QmtWVU9oQmthWE53YjNOcGRHbHZia2tpVTJsdWJHbHVaVHNnWm1sc1pXNWhiV1U5SW1obFlXUmxjaTF5ZFdKNUxXeHZaMjh1Y0c1bklqc2dabWxzWlc1aGJXVXFQVlZVUmkwNEp5ZG9aV0ZrWlhJdGNuVmllUzFzYjJkdkxuQnVad1k3QmxRNkVXTnZiblJsYm5SZmRIbHdaVWtpRG1sdFlXZGxMM0J1WndZN0JsUTZFWE5sY25acFkyVmZibUZ0WlRvS2JHOWpZV3c9IiwiZXhwIjoiMjAyMi0wNi0xMVQxMTo0ODo1MC4yOTFaIiwicHVyIjoiYmxvYl9rZXkifX0=--0d367b229d4a3823ff02386f73733951618c713e/header-ruby-logo.png)
+Redirected to http://localhost:3000/rails/active_storage/disk/eyJfcmFpbHMiOnsibWVzc2FnZSI6IkJBaDdDVG9JYTJWNVNTSWhNbnBqWVdkcE0yRmhjV1ptZW5SdGJuVnNkVFo0Tm5WeU1taHhkUVk2QmtWVU9oQmthWE53YjNOcGRHbHZia2tpVTJsdWJHbHVaVHNnWm1sc1pXNWhiV1U5SW1obFlXUmxjaTF5ZFdKNUxXeHZaMjh1Y0c1bklqc2dabWxzWlc1aGJXVXFQVlZVUmkwNEp5ZG9aV0ZrWlhJdGNuVmllUzFzYjJkdkxuQnVad1k3QmxRNkVXTnZiblJsYm5SZmRIbHdaVWtpRG1sdFlXZGxMM0J1WndZN0JsUTZFWE5sY25acFkyVmZibUZ0WlRvS2JHOWpZV3c9IiwiZXhwIjoiMjAyMi0wNi0xMVQxMTo0ODo1MC4yOTFaIiwicHVyIjoiYmxvYl9rZXkifX0=--0d367b229d4a3823ff02386f73733951618c713e/header-ruby-logo.png
+Completed 302 Found in 10ms (ActiveRecord: 0.2ms | Allocations: 1420)
+
+
+Started GET "/rails/active_storage/disk/eyJfcmFpbHMiOnsibWVzc2FnZSI6IkJBaDdDVG9JYTJWNVNTSWhNbnBqWVdkcE0yRmhjV1ptZW5SdGJuVnNkVFo0Tm5WeU1taHhkUVk2QmtWVU9oQmthWE53YjNOcGRHbHZia2tpVTJsdWJHbHVaVHNnWm1sc1pXNWhiV1U5SW1obFlXUmxjaTF5ZFdKNUxXeHZaMjh1Y0c1bklqc2dabWxzWlc1aGJXVXFQVlZVUmkwNEp5ZG9aV0ZrWlhJdGNuVmllUzFzYjJkdkxuQnVad1k3QmxRNkVXTnZiblJsYm5SZmRIbHdaVWtpRG1sdFlXZGxMM0J1WndZN0JsUTZFWE5sY25acFkyVmZibUZ0WlRvS2JHOWpZV3c9IiwiZXhwIjoiMjAyMi0wNi0xMVQxMTo0ODo1MC4yOTFaIiwicHVyIjoiYmxvYl9rZXkifX0=--0d367b229d4a3823ff02386f73733951618c713e/header-ruby-logo.png" for ::1 at 2022-06-11 07:43:50 -0400
+Processing by ActiveStorage::DiskController#show as PNG
+  Parameters: {"encoded_key"=>"[FILTERED]", "filename"=>"header-ruby-logo"}
+Completed 200 OK in 1ms (ActiveRecord: 0.0ms | Allocations: 295)
+```
+### Migrating Databases
+
+* Earlier when we ran migrations, notice we did NOT open a SQL console and type in SQL statements directly.
+* Migrations define the process of modifying the database schema automatically rather than manually.
+* Easily referenced using `migration` command, can be run the same way by developers, build script, dev, qa, prod, etc.
+* Can also be rolled back
+
+Example: Add a migration to limit the wiki post title length, otherwise user can enter in very long title that makes display look bad:
+
+![title too long](doc-images/title-too-long.png "title too long")
+
+Start by generating a migration:
+
+```
+bin/rails g migration update_wiki_post_title
+```
+
+Output:
+
+```
+invoke  active_record
+create    db/migrate/20220611115558_update_wiki_post_title.rb
+```
+
+Change the title column in wiki_posts table to have a max length of 50 characters:
+
+```ruby
+# wiki/db/migrate/20220611115558_update_wiki_post_title.rb
+class UpdateWikiPostTitle < ActiveRecord::Migration[6.1]
+  def change
+    change_column :wiki_posts, :title, :string, :limit => 50
+  end
+end
+```
+
+Run migration with: `bin/rails db:migrate`, output:
+
+```
+== 20220611115558 UpdateWikiPostTitle: migrating ==============================
+-- change_column(:wiki_posts, :title, :string, {:limit=>50})
+   -> 0.0160s
+== 20220611115558 UpdateWikiPostTitle: migrated (0.0161s) =====================
+```
+
+Note that this will only limit title length on *new* models created. Older ones that had longer title will remain in the database as is.
+
+Actually, it still allows creation of any length title, limitation of SQLite used in course, according to `https://www.hwaci.com/sw/sqlite/faq.html`:
+
+![sqlite varchar](doc-images/sqllite-varchar.png "sqlite varchar")
+
+Suppose you don't want the character limit after all, this can be undone with `rollback`, can also specify how many migrations to rollback with `STEP`:
+
+```
+bin/rails db:rollback STEP=1
+```
+
+Output:
+
+```
+== 20220611115558 UpdateWikiPostTitle: reverting ==============================
+rake aborted!
+StandardError: An error has occurred, this and all later migrations canceled:
+
+
+
+This migration uses change_column, which is not automatically reversible.
+To make the migration reversible you can either:
+1. Define #up and #down methods in place of the #change method.
+2. Use the #reversible method to define reversible behavior.
+
+
+/Users/dbaron/projects/pluralsight/rails-6-pluralsight/wiki/db/migrate/20220611115558_update_wiki_post_title.rb:3:in `change'
+-e:1:in `<main>'
+
+Caused by:
+ActiveRecord::IrreversibleMigration:
+
+This migration uses change_column, which is not automatically reversible.
+To make the migration reversible you can either:
+1. Define #up and #down methods in place of the #change method.
+2. Use the #reversible method to define reversible behavior.
+
+
+/Users/dbaron/projects/pluralsight/rails-6-pluralsight/wiki/db/migrate/20220611115558_update_wiki_post_title.rb:3:in `change'
+-e:1:in `<main>'
+Tasks: TOP => db:rollback
+```
+
+However, not all migrations can be automatically rolled back. For example, if a column is added, Rails can infer that rolling back means removing this column. But with this migration, the column definition was changed, and Rails doesn't know what the previous state of it was.
+
+To fix this particular situation, need to define `up` and `down` methods in migration rather than using `change` that the generator had added:
+
+```ruby
+# wiki/db/migrate/20220611115558_update_wiki_post_title.rb
+class UpdateWikiPostTitle < ActiveRecord::Migration[6.1]
+  def up
+    change_column :wiki_posts, :title, :string, :limit => 50
+  end
+
+  def down
+    change_column :wiki_posts, :title, :string, :limit => 255
+  end
+end
+```
+
+Now try the rollback again:
+
+```
+bin/rails db:rollback STEP=1
+```
+
+This time it works:
+
+```
+== 20220611115558 UpdateWikiPostTitle: reverting ==============================
+-- change_column(:wiki_posts, :title, :string, {:limit=>255})
+   -> 0.0203s
+== 20220611115558 UpdateWikiPostTitle: reverted (0.0204s) =====================
+```
+
+It's also possible to modify data in the migrations, eg: migrating from one format to another (and back the other way in case of rollback).
+
+Rails keeps track of what migrations have been run or not using a `schema_migrations` table in the database, which is the first table Rails creates.
+
+Check on status of migrations with status command:
+
+```
+bin/rails db:migrate:status
+```
+
+Output:
+
+```
+database: db/development.sqlite3
+
+ Status   Migration ID    Migration Name
+--------------------------------------------------
+   up     20220604121631  Create wiki posts
+   up     20220606103844  Add title to wiki posts
+   up     20220610113424  Create active storage tablesactive storage
+   up     20220610114400  Add author description to wiki post
+  down    20220611115558  Update wiki post title
+```
+
+Let's "re-up" the migrations to apply length limit to wiki post title again:
+
+```
+bin/rails db:migrate
+```
+
+Output:
+
+```
+== 20220611115558 UpdateWikiPostTitle: migrating ==============================
+-- change_column(:wiki_posts, :title, :string, {:limit=>50})
+   -> 0.0281s
+== 20220611115558 UpdateWikiPostTitle: migrated (0.0282s) =====================
+```
+
+And check status again with `bin/rails db:migrate:status`:
+
+```
+ Status   Migration ID    Migration Name
+--------------------------------------------------
+   up     20220604121631  Create wiki posts
+   up     20220606103844  Add title to wiki posts
+   up     20220610113424  Create active storage tablesactive storage
+   up     20220610114400  Add author description to wiki post
+   up     20220611115558  Update wiki post title
+```
+
+### Moving Data Between Views and Controllers
