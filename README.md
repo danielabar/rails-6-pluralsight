@@ -27,6 +27,10 @@
       - [Flash System](#flash-system)
       - [Instance Variables](#instance-variables)
     - [Finishing Touches](#finishing-touches)
+      - [Instance Methods](#instance-methods)
+      - [Date Format](#date-format)
+      - [Keeping Data in its Place](#keeping-data-in-its-place)
+      - [Partials](#partials)
 
 <!-- END doctoc generated TOC please keep comment here to allow auto update -->
 
@@ -1961,3 +1965,177 @@ Now refresh index view `http://localhost:3000/wiki_posts` and can see `test` dis
 * Embedded logic and variables are only compiled on the server. Eg: could have a conditional in a view that shows limited data to guests and more data to admins, the compiled html sent to client will only contain data relevant to the intended user
 
 ### Finishing Touches
+
+Copy view code that lists all posts from welcome index to wiki posts index. Need to change the instance variable from @posts to @wiki_posts because that's what the wiki posts controller names it:
+
+```erb
+<!-- wiki/app/views/wiki_posts/index.html.erb -->
+<p id="notice"><%= notice %></p>
+
+<h1>Wiki Posts</h1>
+
+<% @wiki_posts.each do |post| %>
+  <p>
+    <h4><%= post.title %></h4>
+    <%= link_to "View", wiki_post_path(post), class: 'wikiLink' %>
+  </p>
+<% end %>
+
+<%= link_to 'New Wiki Post', new_wiki_post_path %>
+```
+
+#### Instance Methods
+
+Add instance methods to model. Examples of use cases for this:
+* Update relationship
+* Add properties
+* Define computed properties
+
+Let's add method to WikiPost model `meta` to return formatted string containing author and timestamps of this post. Then it can be accessed from any instance of a post, such as any view code that displays it.
+
+Start by just returning `author` from `meta` method:
+
+```ruby
+# wiki/app/models/wiki_post.rb
+class WikiPost < ApplicationRecord
+  has_one_attached :image
+
+  def meta
+    author
+  end
+end
+```
+
+Then update the show view, remove separate display of author, crreated_at, updated_at and replace with new meta method:
+
+```erb
+<!-- wiki/app/views/wiki_posts/show.html.erb -->
+<p id="notice"><%= notice %></p>
+
+<h1><%= @wiki_post.title %></h1>
+<p><%= image_tag @wiki_post.image %></p>
+<p><%= @wiki_post.description %></p>
+
+<div>
+  <%= @wiki_post.meta %>
+</div>
+
+<%= link_to 'Edit', edit_wiki_post_path(@wiki_post) %> |
+<%= link_to 'Back', wiki_posts_path %>
+```
+
+Load a show view such as `http://localhost:3000/wiki_posts/5` to confirm author is displayed just above the Edit and Back links.
+
+Update `meta` method using string concatenation to display other information about the post:
+
+```ruby
+# wiki/app/models/wiki_post.rb
+class WikiPost < ApplicationRecord
+  has_one_attached :image
+
+  def meta
+    "Created by #{author} on #{created_at} and last updated #{updated_at}."
+  end
+end
+```
+
+Refresh a post view `http://localhost:3000/wiki_posts/5` now looks like this:
+
+![show view meta](doc-images/show-view-meta.png "show view meta")
+
+Notice the timestamps are displayed in UTC, eg: `2022-06-11 12:01:14 UTC`. Use Rails' [I18n.l](https://guides.rubyonrails.org/i18n.html) to localize timestamp to user's timezone.
+
+```ruby
+# wiki/app/models/wiki_post.rb
+class WikiPost < ApplicationRecord
+  has_one_attached :image
+
+  def meta
+    "Created by #{author} on #{I18n.l(created_at)} and last updated #{I18n.l(updated_at)}."
+  end
+end
+```
+
+For me it still displays in UTC but in a more human readable form:
+
+![human readable date](doc-images/human-readable-date.png "human readable date")
+
+#### Date Format
+
+Can also adjust the date format to `long`, otherwise, by default prints the time and timezone as well:
+
+```ruby
+# wiki/app/models/wiki_post.rb
+class WikiPost < ApplicationRecord
+  has_one_attached :image
+
+  def meta
+    "Created by #{author} on #{I18n.l(created_at, format: :long)} and last updated #{I18n.l(updated_at, format: :long)}."
+  end
+end
+```
+
+![long date format](doc-images/long-date-format.png "long date format")
+
+It's possible to request a custom format via url, eg: `http://localhost:3000/wiki_posts/5?locale=pirate`
+
+#### Keeping Data in its Place
+
+* Currently, the formatting of the data for display is being done in a model method, not ideal.
+* Meta data is displayed and viewed through the View, not the Model.
+* Logic related to formatting/viewing data should be moved out of the Model and into the View.
+* Logic will go in a Partial
+
+#### Partials
+
+* Partials are roughly similar to components found in React, Vue, Angular etc.
+* Partials support easy re-use of view logic
+
+Partials are defined similarly to a view, but are prefixed with `_`. Create new erb file in wiki posts views folder. It will receive the wiki_post variable from when its rendered in the show view:
+
+```erb
+<!-- wiki/app/views/wiki_posts/_meta.html.erb -->
+<div class="meta">
+  Created by&nbsp;<strong><%= wiki_post.author %></strong>&nbsp;
+  on&nbsp;<strong><%= wiki_post.created_at %></strong>&nbsp;
+  and last updated&nbsp;<strong><%= wiki_post.updated_at %></strong>
+</div>
+```
+
+Update show view, instead of invoking `@wiki_post.meta` model method, render the meta partial, passing in the instance of wiki_post model so the partial can have access to it to display its properties:
+
+```erb
+<!-- wiki/app/views/wiki_posts/show.html.erb -->
+<p id="notice"><%= notice %></p>
+
+<h1><%= @wiki_post.title %></h1>
+<p><%= image_tag @wiki_post.image %></p>
+<p><%= @wiki_post.description %></p>
+
+<%= render 'meta', wiki_post: @wiki_post %>
+
+<%= link_to 'Edit', edit_wiki_post_path(@wiki_post) %> |
+<%= link_to 'Back', wiki_posts_path %>
+```
+
+Update `.meta... strong` styling in wiki posts scss:
+
+```scss
+// wiki/app/assets/stylesheets/wiki_posts.scss
+.meta {
+  display: flex;
+
+  strong {
+    display: inline-block;
+    padding: 5px;
+    border-radius: 3px;
+    background-color: goldenrod;
+  }
+}
+```
+
+Refresh show view:
+
+![show with meta partial](doc-images/show-with-meta-partial.png "show with meta partial")
+
+Left at 6:44 of Finishing Touches
