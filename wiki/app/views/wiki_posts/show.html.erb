@@ -7,4 +7,4 @@
 <%= render 'meta', wiki_post: @wiki_post %>
 
 <%= link_to 'Edit', edit_wiki_post_path(@wiki_post) %> |
-<%= link_to 'Back', wiki_posts_path %>
+<%= link_to 'Delete', wiki_post_path(@wiki_post), method: :delete %>

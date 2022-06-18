@@ -31,6 +31,8 @@
       - [Date Format](#date-format)
       - [Keeping Data in its Place](#keeping-data-in-its-place)
       - [Partials](#partials)
+      - [Delete Post](#delete-post)
+      - [Recap](#recap)
 
 <!-- END doctoc generated TOC please keep comment here to allow auto update -->
 
@@ -2138,4 +2140,205 @@ Refresh show view:
 
 ![show with meta partial](doc-images/show-with-meta-partial.png "show with meta partial")
 
-Left at 6:44 of Finishing Touches
+Now remove the styling, but when the padding is removed need to add non-breaking space `&nbsp;` in the meta partial:
+
+```erb
+<!-- wiki/app/views/wiki_posts/_meta.html.erb -->
+<div class="meta">
+  Created by&nbsp;<strong><%= wiki_post.author %></strong>&nbsp;
+  on&nbsp;<strong><%= wiki_post.created_at %></strong>&nbsp;
+  and last updated&nbsp;<strong><%= wiki_post.updated_at %></strong>
+</div>
+```
+
+Introduce another partial `_list.html.erb` to reduce duplication of code in listing wiki posts. Currently both app index view and wiki post index view are listing posts.
+
+Partial - remember the file name must start with underscore `_`. Also note it uses a variable `posts`, NOT an instance variable. This will be passed to it by the outer views that render this template. Also add a thumbnail version of post image:
+
+```erb
+<!-- wiki/app/views/wiki_posts/_list.html.erb -->
+<div class="posts">
+  <% posts.each do |post| %>
+    <p>
+      <h4><%= post.title %></h4>
+      <%= link_to "View", wiki_post_path(post), class: 'wikiLink' %>
+      <%= image_tag post.image, class: 'thumbnail' %>
+    </p>
+  <% end %>
+</div>
+```
+
+Where the `thumbnail` class is defined in css:
+
+```scss
+// wiki/app/assets/stylesheets/wiki_posts.scss
+img {
+  width: 300px;
+}
+
+img.thumbnail {
+  width: 100px;
+}
+```
+
+Modify wiki_posts index view to render the list partial rather than iterating over the posts itself. Notice that this view must pass in its instance variable `@wiki_posts` (set by controller index method) to the partial as `posts` variable so that the partial has access to the list of posts:
+
+```erb
+<!-- wiki/app/views/wiki_posts/index.html.erb -->
+<p id="notice"><%= notice %></p>
+
+<h1>Wiki Posts</h1>
+
+<%= render 'list', posts: @wiki_posts %>
+
+<%= link_to 'New Wiki Post', new_wiki_post_path %>
+```
+
+**Best Practice:** In theory it's possible to nest partials but its bad for performance so avoid it!
+
+Refresh the wiki posts index view `http://localhost:3000/wiki_posts` to see results of using the list partial and adding image thumbnails:
+
+![wiki post index partial thumbnail](doc-images/wiki-posts-index-partial-thumbnail.png "wiki post index partial thumbnail")
+
+Now also replace the wiki post iteration logic in the welcome index view with the list partial. This time the instance variable passed to the partial is `@posts` because that's what the index method in the welcome controller named it when setting `@posts = WikiPost.all`.
+
+Note that since the list partial is in a different folder than the welcome view, need to specify which folder (aka namespace) its in such as `wiki_posts/list`:
+
+```erb
+<!-- wiki/app/views/welcome/index.html.erb -->
+<h1>Wiki</h1>
+
+<%= render 'wiki_posts/list', posts: @posts %>
+
+<%= link_to "About", welcome_about_path %>
+<%= link_to "New post", new_wiki_post_path %>
+```
+
+Refresh the welcome view `http://localhost:3000/` to see effect of rendering partial with thumbnails:
+
+![welcome index list partial](doc-images/welcome-index-list-partial.png "welcome index list partial")
+
+#### Delete Post
+
+The delete feature will be available as a link displayed on the show view (and get rid of back link).
+
+The relevant routes are:
+
+```
+$ bin/rails routes
+            Prefix Verb   URI Pattern                                                                                       Controller#Action
+         wiki_post GET    /wiki_posts/:id(.:format)                                                                         wiki_posts#show
+                   PATCH  /wiki_posts/:id(.:format)                                                                         wiki_posts#update
+                   PUT    /wiki_posts/:id(.:format)                                                                         wiki_posts#update
+                   DELETE /wiki_posts/:id(.:format)                                                                         wiki_posts#destroy
+```
+
+When generating a delete link, need to specify `method: :delete` as an argument to the `link_to` view helper:
+
+```erb
+<p id="notice"><%= notice %></p>
+
+<h1><%= @wiki_post.title %></h1>
+<p><%= image_tag @wiki_post.image %></p>
+<p><%= @wiki_post.description %></p>
+
+<%= render 'meta', wiki_post: @wiki_post %>
+
+<%= link_to 'Edit', edit_wiki_post_path(@wiki_post) %> |
+<%= link_to 'Delete', wiki_post_path(@wiki_post), method: :delete %>
+```
+
+Now the show view `http://localhost:3000/wiki_posts/2` displays a Delete link instead of the Back link it had before:
+
+![show view with delete link](doc-images/show-view-with-delete-link.png "show view with delete link")
+
+Here is the markup generated by the `link_to` helper with delete method. Although it looks like a regular anchor link that would do an http GET, it will actually do a POST (Rails magic???):
+
+```htm
+<a rel="nofollow" data-method="delete" href="/wiki_posts/2">Delete</a>
+```
+
+Clicking delete link should invoke the `destroy` method of the wiki posts controller, and if successful, redirect to the index view with a flash notice message:
+
+```ruby
+# wiki/app/controllers/wiki_posts_controller.rb
+
+# DELETE /wiki_posts/1 or /wiki_posts/1.json
+def destroy
+  @wiki_post.destroy
+
+  respond_to do |format|
+    format.html { redirect_to wiki_posts_url, notice: "Wiki post was successfully destroyed." }
+    format.json { head :no_content }
+  end
+end
+```
+
+![wiki post deleted](doc-images/wiki-post-deleted.png "wiki post deleted")
+
+Here is the Rails console output from processing the delete request. Notice that it deletes both the wiki post row from the database and the associated active storage for its image:
+
+```
+Started DELETE "/wiki_posts/2" for ::1 at 2022-06-18 09:05:56 -0400
+Processing by WikiPostsController#destroy as HTML
+  Parameters: {"authenticity_token"=>"[FILTERED]", "id"=>"2"}
+   (0.2ms)  SELECT sqlite_version(*)
+  ↳ app/controllers/wiki_posts_controller.rb:66:in `set_wiki_post'
+  WikiPost Load (1.1ms)  SELECT "wiki_posts".* FROM "wiki_posts" WHERE "wiki_posts"."id" = ? LIMIT ?  [["id", 2], ["LIMIT", 1]]
+  ↳ app/controllers/wiki_posts_controller.rb:66:in `set_wiki_post'
+  TRANSACTION (0.1ms)  begin transaction
+  ↳ app/controllers/wiki_posts_controller.rb:55:in `destroy'
+  ActiveStorage::Attachment Load (1.5ms)  SELECT "active_storage_attachments".* FROM "active_storage_attachments" WHERE "active_storage_attachments"."record_id" = ? AND "active_storage_attachments"."record_type" = ? AND "active_storage_attachments"."name" = ? LIMIT ?  [["record_id", 2], ["record_type", "WikiPost"], ["name", "image"], ["LIMIT", 1]]
+  ↳ app/controllers/wiki_posts_controller.rb:55:in `destroy'
+  ActiveStorage::Attachment Destroy (0.8ms)  DELETE FROM "active_storage_attachments" WHERE "active_storage_attachments"."id" = ?  [["id", 5]]
+  ↳ app/controllers/wiki_posts_controller.rb:55:in `destroy'
+  WikiPost Destroy (0.3ms)  DELETE FROM "wiki_posts" WHERE "wiki_posts"."id" = ?  [["id", 2]]
+  ↳ app/controllers/wiki_posts_controller.rb:55:in `destroy'
+  TRANSACTION (1.9ms)  commit transaction
+  ↳ app/controllers/wiki_posts_controller.rb:55:in `destroy'
+  ActiveStorage::Blob Load (0.6ms)  SELECT "active_storage_blobs".* FROM "active_storage_blobs" WHERE "active_storage_blobs"."id" = ? LIMIT ?  [["id", 5], ["LIMIT", 1]]
+  ↳ app/controllers/wiki_posts_controller.rb:55:in `destroy'
+[ActiveJob] Enqueued ActiveStorage::PurgeJob (Job ID: d93fc843-c61d-4a81-813b-185ece282e7b) to Async(default) with arguments: #<GlobalID:0x00007fe3d29039f0 @uri=#<URI::GID gid://wiki/ActiveStorage::Blob/5>>
+Redirected to http://localhost:3000/wiki_posts
+Completed 302 Found in 104ms (ActiveRecord: 7.5ms | Allocations: 9409)
+```
+
+Interesting that the network request in devtools shows a POST was submitted for the delete request, but doesn't seem to specify that it should be DELETE in request headers:
+
+![delete request dev tools](doc-images/delete-request-dev-tools.png "delete request dev tools")
+
+But looking at dev tools Payload, can see `_method: delete` in Form Data:
+
+![delete request form data](doc-images/delete-request-form-data.png "delete request form data")
+
+Can also see this from request -> "copy as curl" reveals that the delete method is contained in `--data-raw` argument:
+
+```
+curl 'http://localhost:3000/wiki_posts/2' \
+-H 'Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.9' \
+-H 'Accept-Language: en-US,en;q=0.9' \
+-H 'Cache-Control: max-age=0' \
+-H 'Connection: keep-alive' \
+-H 'Content-Type: application/x-www-form-urlencoded' \
+-H 'Cookie: __profilin=p%3Dt; _wiki_session=dQebbeLZgqfN9ocoZQfJtdyA91U%2BikFMrw2XHwdHi3MOlc8UQV1Jj2pNgEWx%2FrI5ZbNt66EEn9dV%2FtVNV9e5T7ylO30DnAWR6cyjm2bFpm7f...' \
+-H 'Origin: http://localhost:3000' \
+-H 'Referer: http://localhost:3000/wiki_posts/2' \
+-H 'Sec-Fetch-Dest: document' \
+-H 'Sec-Fetch-Mode: navigate' \
+-H 'Sec-Fetch-Site: same-origin' \
+-H 'Sec-Fetch-User: ?1' \
+-H 'Upgrade-Insecure-Requests: 1' \
+-H 'User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/102.0.0.0 Safari/537.36' \
+-H 'sec-ch-ua: " Not A;Brand";v="99", "Chromium";v="102", "Google Chrome";v="102"' \
+-H 'sec-ch-ua-mobile: ?0' \
+-H 'sec-ch-ua-platform: "macOS"' \
+--data-raw '_method=delete&authenticity_token=zKxKnJDQ8V5IU7Y01gqcUsMpmoHDYJB7J-8xCgl8AR-G4mUZv9o04syyLJE29nW4RpxkH7xLCoXTH5k-x49WaQ' \
+--compressed
+```
+
+#### Recap
+
+* ActiveStorage manages file uploads and storage
+* Execute and rollback database migrations using bin/rails db... commands
+* Move data between Views and Controllers with Flash Messages and Instance Variables
+* Use partials to re-use components in Views

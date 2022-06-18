@@ -1,11 +1,6 @@
 <h1>Wiki</h1>
 
-<% @posts.each do |post| %>
-  <p>
-    <h4><%= post.title %></h4>
-    <%= link_to "View", wiki_post_path(post), class: 'wikiLink' %>
-  </p>
-<% end %>
+<%= render 'wiki_posts/list', posts: @posts %>
 
 <%= link_to "About", welcome_about_path %>
 <%= link_to "New post", new_wiki_post_path %>
